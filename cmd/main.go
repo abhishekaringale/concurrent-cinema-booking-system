@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context" // NEW: Required for Redis commands
 	"log"
 	"net/http"
 
 	"github.com/abhishekaringale/concurrent-cinema-booking/internal/booking"
 	"github.com/abhishekaringale/concurrent-cinema-booking/internal/utils"
+	"github.com/redis/go-redis/v9" // NEW: Import go-redis
 )
 
 type Movie struct {
@@ -16,7 +18,18 @@ type Movie struct {
 }
 
 func main() {
-	store := booking.NewMemoryStore()
+	// 1. Initialize the Redis client connecting to our local server
+	rdb := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+
+	// 2. Ping Redis to verify connection works before starting the server
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		log.Fatalf("failed to connect to Redis: %v", err)
+	}
+
+	// 3. Initialize our RedisStore (swapped from NewMemoryStore)
+	store := booking.NewRedisStore(rdb)
 
 	svc := booking.NewService(store)
 	bookingHandler := booking.NewHandler(svc)
@@ -24,7 +37,6 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /", http.FileServer(http.Dir("static")))
-
 	mux.HandleFunc("GET /movies", listMoviesHandler)
 
 	mux.HandleFunc("GET /movies/{movieID}/seats", bookingHandler.ListSeats)
