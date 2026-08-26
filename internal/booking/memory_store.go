@@ -33,7 +33,7 @@ func (s *MemoryStore) Book(b Booking) (Booking, error) {
 	// Generate new session metadata
 	b.ID = uuid.New().String()
 	b.ExpiresAt = time.Now().Add(2 * time.Minute) // Hold seat for 2 minutes
-
+	b.Status = "held"
 	s.bookings[b.SeatID] = b
 
 	return b, nil
