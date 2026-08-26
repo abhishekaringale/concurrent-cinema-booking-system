@@ -102,3 +102,67 @@ func (s *RedisStore) ListBookings(movieID string) []Booking {
 
 	return bookings
 }
+
+func (s *RedisStore) Confirm(sessionID string) error {
+	ctx := context.Background()
+	sessKey := sessionKey(sessionID)
+
+	// 1. Find the seat key from the session mapping
+	sKey, err := s.rdb.Get(ctx, sessKey).Result()
+	if err == redis.Nil {
+		return ErrSessionNotFound
+	} else if err != nil {
+		return err
+	}
+
+	// 2. Retrieve the booking details
+	val, err := s.rdb.Get(ctx, sKey).Result()
+	if err == redis.Nil {
+		return ErrSessionExpired
+	} else if err != nil {
+		return err
+	}
+
+	var b Booking
+	if err := json.Unmarshal([]byte(val), &b); err != nil {
+		return err
+	}
+
+	// 3. Update status to confirmed and clear the expiration time
+	b.Status = "confirmed"
+	b.ExpiresAt = time.Time{}
+
+	updatedJSON, err := json.Marshal(b)
+	if err != nil {
+		return err
+	}
+
+	// 4. Update seat to be confirmed (No TTL) and delete session key atomically
+	pipe := s.rdb.TxPipeline()
+	pipe.Set(ctx, sKey, updatedJSON, 0) // 0 expiration means persist forever
+	pipe.Del(ctx, sessKey)
+	_, err = pipe.Exec(ctx)
+
+	return err
+}
+
+func (s *RedisStore) Release(sessionID string) error {
+	ctx := context.Background()
+	sessKey := sessionKey(sessionID)
+
+	// 1. Find the seat key
+	sKey, err := s.rdb.Get(ctx, sessKey).Result()
+	if err == redis.Nil {
+		return ErrSessionNotFound
+	} else if err != nil {
+		return err
+	}
+
+	// 2. Delete both keys atomically
+	pipe := s.rdb.TxPipeline()
+	pipe.Del(ctx, sKey)
+	pipe.Del(ctx, sessKey)
+	_, err = pipe.Exec(ctx)
+
+	return err
+}
