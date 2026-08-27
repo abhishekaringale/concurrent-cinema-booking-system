@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import './App.css'
 
 function App() {
   const [movies, setMovies] = useState([])
   const [selectedMovie, setSelectedMovie] = useState(null)
   const [seatStatuses, setSeatStatuses] = useState([])
+  const [activeSession, setActiveSession] = useState(null) // NEW: Track the active seat hold session
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // 1. Generate a persistent 12-character hex User ID (just like "7af73b13543c")
+  // Generate a persistent 12-character hex User ID
   const [userID] = useState(() => {
     const saved = localStorage.getItem('cinema_userID')
     if (saved) return saved
@@ -17,7 +18,7 @@ function App() {
     return newID
   })
 
-  // 2. Fetch movies from the Go backend on mount
+  // Fetch movies on mount
   useEffect(() => {
     fetch('/movies')
       .then((res) => {
@@ -34,32 +35,72 @@ function App() {
       })
   }, [])
 
-  // 3. Fetch seat statuses whenever a movie is selected
+  // Helper function to fetch seat statuses (reusable)
+  const fetchSeats = useCallback(() => {
+    if (!selectedMovie) return
+    fetch(`/movies/${selectedMovie.id}/seats`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load seats')
+        return res.json()
+      })
+      .then((data) => {
+        setSeatStatuses(data || [])
+      })
+      .catch((err) => {
+        console.error(err.message)
+      })
+  }, [selectedMovie])
+
+  // Poll seat statuses
   useEffect(() => {
     if (!selectedMovie) {
       setSeatStatuses([])
       return
     }
-
-    const fetchSeats = () => {
-      fetch(`/movies/${selectedMovie.id}/seats`)
-        .then((res) => {
-          if (!res.ok) throw new Error('Failed to load seats')
-          return res.json()
-        })
-        .then((data) => {
-          setSeatStatuses(data || [])
-        })
-        .catch((err) => {
-          console.error(err.message)
-        })
-    }
-
     fetchSeats()
-    // Poll every 5 seconds to keep the seat grid synchronized with other users
     const interval = setInterval(fetchSeats, 5000)
     return () => clearInterval(interval)
-  }, [selectedMovie])
+  }, [selectedMovie, fetchSeats])
+
+  // NEW: Handle available seat clicks to request a hold from Go API
+  const handleSeatClick = (seatID, status) => {
+    if (status !== 'available') return
+
+    // Limit to one hold session at a time
+    if (activeSession) {
+      alert('You are already holding a seat! Release it first to hold another.')
+      return
+    }
+
+    fetch(`/movies/${selectedMovie.id}/seats/${seatID}/hold`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: userID }),
+    })
+      .then((res) => {
+        if (!res.ok) {
+          return res.json().then((data) => {
+            throw new Error(data.error || 'Failed to hold seat')
+          })
+        }
+        return res.json()
+      })
+      .then((data) => {
+        // Store hold session in state
+        setActiveSession({
+          sessionID: data.session_id,
+          movieID: data.movie_id,
+          seatID: data.seat_id,
+          expiresAt: new Date(data.expires_at),
+        })
+        fetchSeats() // Update grid immediately
+      })
+      .catch((err) => {
+        alert(err.message)
+      })
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-mono p-8 select-none">
@@ -87,7 +128,11 @@ function App() {
               return (
                 <div
                   key={movie.id}
-                  onClick={() => setSelectedMovie(movie)}
+                  onClick={() => {
+                    // Reset selected movie, and clear any local hold session
+                    setSelectedMovie(movie)
+                    setActiveSession(null)
+                  }}
                   className={`cursor-pointer px-6 py-5 rounded-xl border-2 w-64 transition-all ${
                     isSelected
                       ? 'border-sky-500 bg-sky-950/10 shadow-lg shadow-sky-500/10'
@@ -139,13 +184,14 @@ function App() {
                           }
                         }
 
+                        // Determine if button should be disabled (other holds or confirmed bookings)
                         const isDisabled = status === 'confirmed' || status === 'other_hold'
 
                         return (
                           <button
                             key={seatID}
                             disabled={isDisabled}
-                            onClick={() => console.log(`Clicked ${seatID}`)}
+                            onClick={() => handleSeatClick(seatID, status)}
                             className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold transition-all ${
                               status === 'available'
                                 ? 'bg-slate-900 text-slate-500 hover:text-sky-400 border border-slate-800/40 hover:border-sky-500/30'
@@ -188,6 +234,32 @@ function App() {
                 <span>Confirmed</span>
               </div>
             </div>
+
+            {/* NEW: Checkout Sidebar Panel UI (Placeholder timer & mock buttons for Step 5/6) */}
+            {activeSession && (
+              <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-5 rounded-xl flex items-center justify-between mt-10 shadow-xl">
+                <div>
+                  <div className="text-sm font-semibold text-slate-300">
+                    Holding Seat <span className="text-sky-400 font-bold">{activeSession.seatID}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1.5">
+                    Time remaining: <span className="text-yellow-500 font-bold">02:00</span>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-slate-50 text-xs font-bold rounded-lg transition"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg transition"
+                  >
+                    Release
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
