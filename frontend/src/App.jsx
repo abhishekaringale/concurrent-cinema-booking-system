@@ -6,7 +6,7 @@ function App() {
   const [selectedMovie, setSelectedMovie] = useState(null)
   const [seatStatuses, setSeatStatuses] = useState([])
   const [activeSession, setActiveSession] = useState(null)
-  const [timerSeconds, setTimerSeconds] = useState(0) // NEW: Track hold duration in seconds
+  const [timerSeconds, setTimerSeconds] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -63,7 +63,7 @@ function App() {
     return () => clearInterval(interval)
   }, [selectedMovie, fetchSeats])
 
-  // NEW: Handle hold countdown timer
+  // Handle hold countdown timer
   useEffect(() => {
     if (!activeSession) {
       setTimerSeconds(0)
@@ -84,12 +84,12 @@ function App() {
       }
     }
 
-    updateTimer() // run once immediately
+    updateTimer()
     const timerInterval = setInterval(updateTimer, 1000)
     return () => clearInterval(timerInterval)
   }, [activeSession, fetchSeats])
 
-  // NEW: Helper to format total seconds into MM:SS (e.g. 119 -> "01:59")
+  // Helper to format total seconds into MM:SS
   const formatTime = (totalSeconds) => {
     const minutes = Math.floor(totalSeconds / 60)
     const seconds = totalSeconds % 60
@@ -127,6 +127,49 @@ function App() {
           seatID: data.seat_id,
           expiresAt: new Date(data.expires_at),
         })
+        fetchSeats()
+      })
+      .catch((err) => {
+        alert(err.message)
+      })
+  }
+
+  // NEW: Confirm the seat booking permanently (calls PUT /sessions/:id/confirm)
+  const handleConfirm = () => {
+    if (!activeSession) return
+
+    fetch(`/sessions/${activeSession.sessionID}/confirm`, {
+      method: 'PUT',
+    })
+      .then((res) => {
+        if (!res.ok) {
+          return res.json().then((data) => {
+            throw new Error(data.error || 'Failed to confirm booking')
+          })
+        }
+        setActiveSession(null)
+        fetchSeats()
+        alert('Booking confirmed successfully!')
+      })
+      .catch((err) => {
+        alert(err.message)
+      })
+  }
+
+  // NEW: Release the seat hold immediately (calls DELETE /sessions/:id)
+  const handleRelease = () => {
+    if (!activeSession) return
+
+    fetch(`/sessions/${activeSession.sessionID}`, {
+      method: 'DELETE',
+    })
+      .then((res) => {
+        if (!res.ok) {
+          return res.json().then((data) => {
+            throw new Error(data.error || 'Failed to release hold')
+          })
+        }
+        setActiveSession(null)
         fetchSeats()
       })
       .catch((err) => {
@@ -265,7 +308,7 @@ function App() {
               </div>
             </div>
 
-            {/* Checkout Panel (Now displaying live remaining countdown timer) */}
+            {/* Checkout Panel (Confirm and Release actions wired up) */}
             {activeSession && (
               <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-5 rounded-xl flex items-center justify-between mt-10 shadow-xl">
                 <div>
@@ -278,11 +321,13 @@ function App() {
                 </div>
                 <div className="flex gap-3">
                   <button
+                    onClick={handleConfirm}
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-slate-50 text-xs font-bold rounded-lg transition"
                   >
                     Confirm
                   </button>
                   <button
+                    onClick={handleRelease}
                     className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg transition"
                   >
                     Release
