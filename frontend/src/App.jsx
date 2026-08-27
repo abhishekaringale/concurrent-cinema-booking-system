@@ -5,7 +5,8 @@ function App() {
   const [movies, setMovies] = useState([])
   const [selectedMovie, setSelectedMovie] = useState(null)
   const [seatStatuses, setSeatStatuses] = useState([])
-  const [activeSession, setActiveSession] = useState(null) // NEW: Track the active seat hold session
+  const [activeSession, setActiveSession] = useState(null)
+  const [timerSeconds, setTimerSeconds] = useState(0) // NEW: Track hold duration in seconds
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -62,11 +63,43 @@ function App() {
     return () => clearInterval(interval)
   }, [selectedMovie, fetchSeats])
 
-  // NEW: Handle available seat clicks to request a hold from Go API
+  // NEW: Handle hold countdown timer
+  useEffect(() => {
+    if (!activeSession) {
+      setTimerSeconds(0)
+      return
+    }
+
+    const updateTimer = () => {
+      const remainingMs = activeSession.expiresAt.getTime() - Date.now()
+      const remainingSec = Math.max(0, Math.floor(remainingMs / 1000))
+      
+      setTimerSeconds(remainingSec)
+
+      // Auto-expire hold on client side if timer reaches 0
+      if (remainingSec <= 0) {
+        setActiveSession(null)
+        fetchSeats()
+        alert('Your hold session has expired!')
+      }
+    }
+
+    updateTimer() // run once immediately
+    const timerInterval = setInterval(updateTimer, 1000)
+    return () => clearInterval(timerInterval)
+  }, [activeSession, fetchSeats])
+
+  // NEW: Helper to format total seconds into MM:SS (e.g. 119 -> "01:59")
+  const formatTime = (totalSeconds) => {
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }
+
+  // Handle available seat clicks to request a hold from Go API
   const handleSeatClick = (seatID, status) => {
     if (status !== 'available') return
 
-    // Limit to one hold session at a time
     if (activeSession) {
       alert('You are already holding a seat! Release it first to hold another.')
       return
@@ -88,14 +121,13 @@ function App() {
         return res.json()
       })
       .then((data) => {
-        // Store hold session in state
         setActiveSession({
           sessionID: data.session_id,
           movieID: data.movie_id,
           seatID: data.seat_id,
           expiresAt: new Date(data.expires_at),
         })
-        fetchSeats() // Update grid immediately
+        fetchSeats()
       })
       .catch((err) => {
         alert(err.message)
@@ -129,7 +161,6 @@ function App() {
                 <div
                   key={movie.id}
                   onClick={() => {
-                    // Reset selected movie, and clear any local hold session
                     setSelectedMovie(movie)
                     setActiveSession(null)
                   }}
@@ -184,7 +215,6 @@ function App() {
                           }
                         }
 
-                        // Determine if button should be disabled (other holds or confirmed bookings)
                         const isDisabled = status === 'confirmed' || status === 'other_hold'
 
                         return (
@@ -235,7 +265,7 @@ function App() {
               </div>
             </div>
 
-            {/* NEW: Checkout Sidebar Panel UI (Placeholder timer & mock buttons for Step 5/6) */}
+            {/* Checkout Panel (Now displaying live remaining countdown timer) */}
             {activeSession && (
               <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-5 rounded-xl flex items-center justify-between mt-10 shadow-xl">
                 <div>
@@ -243,7 +273,7 @@ function App() {
                     Holding Seat <span className="text-sky-400 font-bold">{activeSession.seatID}</span>
                   </div>
                   <div className="text-xs text-slate-500 mt-1.5">
-                    Time remaining: <span className="text-yellow-500 font-bold">02:00</span>
+                    Time remaining: <span className="text-yellow-500 font-bold">{formatTime(timerSeconds)}</span>
                   </div>
                 </div>
                 <div className="flex gap-3">
