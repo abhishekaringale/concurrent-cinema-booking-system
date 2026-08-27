@@ -1,9 +1,32 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Film } from 'lucide-react'
+import MovieGrid from './components/MovieGrid'
 import './App.css'
 
 function App() {
+  const [movies, setMovies] = useState([])
   const [selectedMovie, setSelectedMovie] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  // Fetch movies from our Go backend on component mount
+  useEffect(() => {
+    fetch('/movies')
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error('Failed to load screenings')
+        }
+        return res.json()
+      })
+      .then((data) => {
+        setMovies(data)
+        setLoading(false)
+      })
+      .catch((err) => {
+        setError(err.message)
+        setLoading(false)
+      })
+  }, [])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
@@ -30,32 +53,25 @@ function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col justify-center items-center">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col justify-center items-center">
         {selectedMovie ? (
           <div className="text-center">
+            <h2 className="text-2xl font-bold text-slate-50">{selectedMovie.title}</h2>
             <button 
               onClick={() => setSelectedMovie(null)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium transition"
+              className="mt-6 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-sm font-medium transition"
             >
               Back to Movies
             </button>
-            <p className="mt-4">Movie details will load here in Step 3.</p>
+            <p className="mt-4 text-slate-400">Seat map for this movie will load here in Step 4.</p>
           </div>
         ) : (
-          <div className="text-center max-w-lg">
-            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-slate-50">
-              Book Your Experience
-            </h2>
-            <p className="mt-4 text-lg text-slate-400">
-              Choose a film to begin your seat reservation. Temporary holds are valid for 2 minutes.
-            </p>
-            <button 
-              onClick={() => setSelectedMovie({ id: 'movie-1', title: 'The Matrix' })}
-              className="mt-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-semibold shadow-lg shadow-indigo-500/25 transition-all"
-            >
-              Select Movie (Step 2 Demo)
-            </button>
-          </div>
+          <MovieGrid 
+            movies={movies} 
+            onSelectMovie={setSelectedMovie} 
+            loading={loading} 
+            error={error} 
+          />
         )}
       </main>
 
