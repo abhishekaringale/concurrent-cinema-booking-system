@@ -4,6 +4,7 @@ import './App.css'
 function App() {
   const [movies, setMovies] = useState([])
   const [selectedMovie, setSelectedMovie] = useState(null)
+  const [seatStatuses, setSeatStatuses] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -32,6 +33,33 @@ function App() {
         setLoading(false)
       })
   }, [])
+
+  // 3. Fetch seat statuses whenever a movie is selected
+  useEffect(() => {
+    if (!selectedMovie) {
+      setSeatStatuses([])
+      return
+    }
+
+    const fetchSeats = () => {
+      fetch(`/movies/${selectedMovie.id}/seats`)
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to load seats')
+          return res.json()
+        })
+        .then((data) => {
+          setSeatStatuses(data || [])
+        })
+        .catch((err) => {
+          console.error(err.message)
+        })
+    }
+
+    fetchSeats()
+    // Poll every 5 seconds to keep the seat grid synchronized with other users
+    const interval = setInterval(fetchSeats, 5000)
+    return () => clearInterval(interval)
+  }, [selectedMovie])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-mono p-8 select-none">
@@ -76,7 +104,7 @@ function App() {
           </div>
         )}
 
-        {/* Seat Grid Layout (Placeholder UI for Step 3 selection preview) */}
+        {/* Seat Grid Layout */}
         {selectedMovie && (
           <div className="w-full max-w-2xl mx-auto flex flex-col items-center mt-6">
             {/* Screen Line */}
@@ -85,7 +113,7 @@ function App() {
             </div>
             <div className="w-full h-[2px] bg-gradient-to-r from-transparent via-sky-500 to-transparent rounded-full shadow-[0_0_12px_rgba(14,165,233,0.6)] mb-10" />
 
-            {/* Static Grid (Step 3 Layout Preview) */}
+            {/* Dynamic Grid */}
             <div className="flex flex-col gap-3 mb-8">
               {Array.from({ length: selectedMovie.rows }).map((_, rowIndex) => {
                 const rowLetter = String.fromCharCode(65 + rowIndex) // A, B, C...
@@ -98,11 +126,35 @@ function App() {
                     <div className="flex gap-2.5">
                       {Array.from({ length: selectedMovie.seats_per_row }).map((_, seatIndex) => {
                         const seatNum = seatIndex + 1
+                        const seatID = `${rowLetter}${seatNum}`
+
+                        // Determine seat status based on backend data
+                        const seatData = seatStatuses.find(s => s.seat_id === seatID)
+                        let status = 'available'
+                        if (seatData) {
+                          if (seatData.confirmed) {
+                            status = 'confirmed'
+                          } else if (seatData.booked) {
+                            status = seatData.user_id === userID ? 'held' : 'other_hold'
+                          }
+                        }
+
+                        const isDisabled = status === 'confirmed' || status === 'other_hold'
+
                         return (
                           <button
-                            key={seatIndex}
-                            disabled
-                            className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold bg-slate-900 text-slate-600 border border-slate-800/40 cursor-not-allowed"
+                            key={seatID}
+                            disabled={isDisabled}
+                            onClick={() => console.log(`Clicked ${seatID}`)}
+                            className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold transition-all ${
+                              status === 'available'
+                                ? 'bg-slate-900 text-slate-500 hover:text-sky-400 border border-slate-800/40 hover:border-sky-500/30'
+                                : status === 'held'
+                                ? 'bg-yellow-500 text-slate-950 font-bold'
+                                : status === 'other_hold'
+                                ? 'bg-orange-500 text-white font-bold cursor-not-allowed opacity-80'
+                                : 'bg-red-500 text-white font-bold cursor-not-allowed'
+                            }`}
                           >
                             {seatNum}
                           </button>
