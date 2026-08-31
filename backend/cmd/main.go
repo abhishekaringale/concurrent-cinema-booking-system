@@ -40,6 +40,7 @@ func main() {
 	mux.HandleFunc("GET /movies", listMoviesHandler)
 
 	mux.HandleFunc("GET /movies/{movieID}/seats", bookingHandler.ListSeats)
+	mux.HandleFunc("GET /movies/{movieID}/seats/stream", bookingHandler.StreamSeats)
 	mux.HandleFunc("POST /movies/{movieID}/seats/{seatID}/hold", bookingHandler.HoldSeat)
 	mux.HandleFunc("PUT /sessions/{sessionID}/confirm", bookingHandler.Confirm)
 	mux.HandleFunc("DELETE /sessions/{sessionID}", bookingHandler.Release)

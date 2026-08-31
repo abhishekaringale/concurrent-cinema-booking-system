@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import './App.css'
 
 function App() {
@@ -10,12 +10,12 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Generate a persistent 12-character hex User ID
+  // Generate a persistent 12-character hex User ID (unique per tab using sessionStorage)
   const [userID] = useState(() => {
-    const saved = localStorage.getItem('cinema_userID')
+    const saved = sessionStorage.getItem('cinema_userID')
     if (saved) return saved
     const newID = Math.random().toString(16).substring(2, 14)
-    localStorage.setItem('cinema_userID', newID)
+    sessionStorage.setItem('cinema_userID', newID)
     return newID
   })
 
@@ -36,32 +36,34 @@ function App() {
       })
   }, [])
 
-  // Helper function to fetch seat statuses (reusable)
-  const fetchSeats = useCallback(() => {
-    if (!selectedMovie) return
-    fetch(`/movies/${selectedMovie.id}/seats`)
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load seats')
-        return res.json()
-      })
-      .then((data) => {
-        setSeatStatuses(data || [])
-      })
-      .catch((err) => {
-        console.error(err.message)
-      })
-  }, [selectedMovie])
-
-  // Poll seat statuses
+  // Connect EventSource to stream seat updates in real-time
   useEffect(() => {
     if (!selectedMovie) {
       setSeatStatuses([])
       return
     }
-    fetchSeats()
-    const interval = setInterval(fetchSeats, 5000)
-    return () => clearInterval(interval)
-  }, [selectedMovie, fetchSeats])
+
+    // Open persistent SSE stream connection
+    const eventSource = new EventSource(`/movies/${selectedMovie.id}/seats/stream`)
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        setSeatStatuses(data || [])
+      } catch (err) {
+        console.error('Failed to parse stream event data:', err)
+      }
+    }
+
+    eventSource.onerror = (err) => {
+      console.error('SSE Connection failed:', err)
+    }
+
+    return () => {
+      // Close stream connection on unmount/movie selection change
+      eventSource.close()
+    }
+  }, [selectedMovie])
 
   // Handle hold countdown timer
   useEffect(() => {
@@ -79,7 +81,6 @@ function App() {
       // Auto-expire hold on client side if timer reaches 0
       if (remainingSec <= 0) {
         setActiveSession(null)
-        fetchSeats()
         alert('Your hold session has expired!')
       }
     }
@@ -87,7 +88,7 @@ function App() {
     updateTimer()
     const timerInterval = setInterval(updateTimer, 1000)
     return () => clearInterval(timerInterval)
-  }, [activeSession, fetchSeats])
+  }, [activeSession])
 
   // Helper to format total seconds into MM:SS
   const formatTime = (totalSeconds) => {
@@ -127,18 +128,17 @@ function App() {
           seatID: data.seat_id,
           expiresAt: new Date(data.expires_at),
         })
-        fetchSeats()
       })
       .catch((err) => {
         alert(err.message)
       })
   }
 
-  // NEW: Confirm the seat booking permanently (calls PUT /sessions/:id/confirm)
+  // Confirm the seat booking permanently (calls PUT /sessions/:id/confirm?movie_id=...)
   const handleConfirm = () => {
     if (!activeSession) return
 
-    fetch(`/sessions/${activeSession.sessionID}/confirm`, {
+    fetch(`/sessions/${activeSession.sessionID}/confirm?movie_id=${activeSession.movieID}`, {
       method: 'PUT',
     })
       .then((res) => {
@@ -148,7 +148,6 @@ function App() {
           })
         }
         setActiveSession(null)
-        fetchSeats()
         alert('Booking confirmed successfully!')
       })
       .catch((err) => {
@@ -156,11 +155,11 @@ function App() {
       })
   }
 
-  // NEW: Release the seat hold immediately (calls DELETE /sessions/:id)
+  // Release the seat hold immediately (calls DELETE /sessions/:id?movie_id=...)
   const handleRelease = () => {
     if (!activeSession) return
 
-    fetch(`/sessions/${activeSession.sessionID}`, {
+    fetch(`/sessions/${activeSession.sessionID}?movie_id=${activeSession.movieID}`, {
       method: 'DELETE',
     })
       .then((res) => {
@@ -170,7 +169,6 @@ function App() {
           })
         }
         setActiveSession(null)
-        fetchSeats()
       })
       .catch((err) => {
         alert(err.message)
