@@ -4,10 +4,12 @@ import (
 	"context" // NEW: Required for Redis commands
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/abhishekaringale/concurrent-cinema-booking/internal/booking"
 	"github.com/abhishekaringale/concurrent-cinema-booking/internal/utils"
-	"github.com/redis/go-redis/v9" // NEW: Import go-redis
+	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 )
 
 type Movie struct {
@@ -18,10 +20,26 @@ type Movie struct {
 }
 
 func main() {
-	// 1. Initialize the Redis client connecting to our local server
-	rdb := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
+	// Load environment variables from .env file if present
+	_ = godotenv.Load()
+
+	// 1. Initialize the Redis client connecting to our local server or Upstash
+	redisURL := os.Getenv("REDIS_URL")
+	var opt *redis.Options
+	var err error
+	if redisURL != "" {
+		// 1. In Production / Cloud: Parse Upstash URL (supports SSL "rediss://")
+		opt, err = redis.ParseURL(redisURL)
+		if err != nil {
+			log.Fatalf("failed to parse REDIS_URL: %v", err)
+		}
+	} else {
+		// 2. On Your Laptop: Fallback to local Redis
+		opt = &redis.Options{
+			Addr: "localhost:6379",
+		}
+	}
+	rdb := redis.NewClient(opt)
 
 	// 2. Ping Redis to verify connection works before starting the server
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
