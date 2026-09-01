@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { Film } from 'lucide-react'
 import './App.css'
 
 function App() {
@@ -179,9 +180,14 @@ function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-mono p-8 select-none">
       {/* Header */}
       <header className="max-w-4xl w-full mx-auto flex items-center justify-between mb-12 border-b border-slate-900 pb-6">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-100">
-          Cinema Booking
-        </h1>
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-sky-500/10 border border-sky-500/25 rounded-xl text-sky-400">
+            <Film className="w-6 h-6" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-100">
+            Cinema Booking
+          </h1>
+        </div>
         <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-400">
           user: <span className="text-slate-200 font-bold">{userID}</span>
         </div>
