@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/movies/:path*",
+      "destination": "https://concurrent-cinema-booking-system.onrender.com/movies/:path*"
+    },
+    {
+      "source": "/sessions/:path*",
+      "destination": "https://concurrent-cinema-booking-system.onrender.com/sessions/:path*"
+    }
+  ]
+}
