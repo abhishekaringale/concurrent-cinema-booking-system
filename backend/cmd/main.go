@@ -69,6 +69,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /{$}", rootHandler)
 	mux.HandleFunc("GET /movies", listMoviesHandler)
 	mux.HandleFunc("GET /movies/{movieID}/seats", bookingHandler.ListSeats)
 	mux.HandleFunc("GET /movies/{movieID}/seats/stream", bookingHandler.StreamSeats)
@@ -86,6 +87,25 @@ func main() {
 	if err := http.ListenAndServe(":"+port, enableCORS(mux)); err != nil {
 		log.Fatalf("failed to start server: %v", err)
 	}
+}
+
+func rootHandler(w http.ResponseWriter, r *http.Request) {
+	response := map[string]any{
+		"service": "Concurrent Cinema Booking API",
+		"status":  "healthy",
+		"version": "1.0.0",
+		"endpoints": map[string]string{
+			"GET /movies":                                  "List all available movie screenings",
+			"GET /movies/{movieID}/seats":                  "Fetch current seat statuses",
+			"GET /movies/{movieID}/seats/stream":           "Real-time Server-Sent Events (SSE) stream",
+			"POST /movies/{movieID}/seats/{seatID}/hold":   "Temporarily hold a seat for 2 minutes",
+			"PUT /sessions/{sessionID}/confirm?movie_id=":  "Permanently confirm a held seat reservation",
+			"DELETE /sessions/{sessionID}?movie_id=":       "Release a held seat reservation",
+		},
+		"github": "https://github.com/abhishekaringale/concurrent-cinema-booking-system",
+	}
+
+	utils.WriteJSON(w, http.StatusOK, response)
 }
 
 func listMoviesHandler(w http.ResponseWriter, r *http.Request) {
