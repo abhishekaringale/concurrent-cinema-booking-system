@@ -1,7 +1,7 @@
 package main
 
 import (
-	"context" // NEW: Required for Redis commands
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +17,21 @@ type Movie struct {
 	Title       string `json:"title"`
 	Rows        int    `json:"rows"`
 	SeatsPerRow int    `json:"seats_per_row"`
+}
+
+func enableCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func main() {
@@ -46,7 +61,7 @@ func main() {
 		log.Fatalf("failed to connect to Redis: %v", err)
 	}
 
-	// 3. Initialize our RedisStore (swapped from NewMemoryStore)
+	// 3. Initialize our RedisStore
 	store := booking.NewRedisStore(rdb)
 
 	svc := booking.NewService(store)
@@ -54,18 +69,21 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.Handle("GET /", http.FileServer(http.Dir("static")))
 	mux.HandleFunc("GET /movies", listMoviesHandler)
-
 	mux.HandleFunc("GET /movies/{movieID}/seats", bookingHandler.ListSeats)
 	mux.HandleFunc("GET /movies/{movieID}/seats/stream", bookingHandler.StreamSeats)
 	mux.HandleFunc("POST /movies/{movieID}/seats/{seatID}/hold", bookingHandler.HoldSeat)
 	mux.HandleFunc("PUT /sessions/{sessionID}/confirm", bookingHandler.Confirm)
 	mux.HandleFunc("DELETE /sessions/{sessionID}", bookingHandler.Release)
 
-	log.Println("server is running on http://localhost:8080...")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	log.Printf("server is running on port %s...", port)
+
+	if err := http.ListenAndServe(":"+port, enableCORS(mux)); err != nil {
 		log.Fatalf("failed to start server: %v", err)
 	}
 }
